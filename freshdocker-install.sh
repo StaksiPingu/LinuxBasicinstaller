@@ -11,7 +11,7 @@ NC='\033[0m' # No Color
 
 # Banner
 echo -e "${BLUE}╔════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║   Docker Installation Script v2.2     ║${NC}"
+echo -e "${BLUE}║   Docker Installation Script v2.3     ║${NC}"
 echo -e "${BLUE}║   Docker + Compose + Portainer         ║${NC}"
 echo -e "${BLUE}╚════════════════════════════════════════╝${NC}"
 echo ""
@@ -22,14 +22,17 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-# Funktion für Ja/Nein Abfragen
+# Funktion für Ja/Nein Abfragen (KORRIGIERT)
 ask_yes_no() {
     while true; do
-        read -p "$1 (j/n): " yn
+        read -r -p "$1 (j/n): " yn
+        # Leerzeichen entfernen und in Kleinbuchstaben umwandeln
+        yn=$(echo "$yn" | tr '[:upper:]' '[:lower:]' | xargs)
+        
         case $yn in
-            [Jj]* ) return 0;;
-            [Nn]* ) return 1;;
-            * ) echo "Bitte j oder n eingeben.";;
+            j|ja|y|yes ) return 0;;
+            n|nein|no ) return 1;;
+            * ) echo -e "${RED}Ungültige Eingabe! Bitte 'j' für Ja oder 'n' für Nein eingeben.${NC}";;
         esac
     done
 }
@@ -108,7 +111,7 @@ install_portainer() {
         docker rm portainer 2>/dev/null
     fi
     
-    # Portainer starten (MIT LTS TAG)
+    # Portainer starten
     echo -e "${CYAN}→ Starte Portainer Container...${NC}"
     docker run -d \
         -p 8000:8000 \
@@ -125,7 +128,6 @@ install_portainer() {
     
     # Status prüfen
     if docker ps | grep -q portainer; then
-        # IP-Adresse ermitteln
         IP=$(hostname -I | awk '{print $1}')
         
         echo -e "${GREEN}✅ Portainer erfolgreich installiert!${NC}"
@@ -144,7 +146,7 @@ install_portainer() {
     fi
 }
 
-# Hauptmenü mit ALLE Option
+# Hauptmenü
 echo -e "${YELLOW}Was möchten Sie installieren?${NC}\n"
 
 INSTALL_DOCKER=false
@@ -152,6 +154,9 @@ INSTALL_COMPOSE=false
 INSTALL_PORTAINER=false
 
 # Erste Frage: Alles installieren?
+echo -e "${MAGENTA}Tipp: Sie können 'j', 'ja', 'y' oder 'yes' für Ja eingeben${NC}"
+echo -e "${MAGENTA}      und 'n', 'nein' oder 'no' für Nein${NC}\n"
+
 if ask_yes_no "⚡ ALLE Komponenten installieren (Docker + Compose + Portainer)?"; then
     INSTALL_DOCKER=true
     INSTALL_COMPOSE=true
@@ -159,7 +164,7 @@ if ask_yes_no "⚡ ALLE Komponenten installieren (Docker + Compose + Portainer)?
     echo -e "${GREEN}✓ Alle Komponenten werden installiert${NC}\n"
 else
     # Einzeln abfragen
-    echo -e "${CYAN}→ Einzelne Auswahl:${NC}\n"
+    echo -e "\n${CYAN}→ Einzelne Auswahl:${NC}\n"
     
     if ask_yes_no "🐳 Docker installieren?"; then
         INSTALL_DOCKER=true
