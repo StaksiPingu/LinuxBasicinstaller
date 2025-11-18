@@ -1,319 +1,150 @@
 #!/bin/bash
 
-# ===========================================
-# Docker + Compose + Portainer Setup (v3.0)
-# Getestet auf: Ubuntu 20.04 / 22.04 / 24.04
-# ===========================================
+# ===================================================
+# Docker Manager Script (Install | Update | Uninstall)
+# Supports: Docker 24, Compose v2, Portainer CE (LTS)
+# ===================================================
 
-# Farben
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-NC='\033[0m'
-
-# Banner
-echo -e "${CYAN}"
-echo "╔════════════════════════════════════════╗"
-echo "║   Docker + Compose + Portainer Setup   ║"
-echo "║        Auto-Installation v3.0          ║"
-echo "╚════════════════════════════════════════╝"
-echo -e "${NC}"
-
-# Root-Check
-if [[ $EUID -ne 0 ]]; then
-   echo -e "${RED}❌ Dieses Script muss als root ausgeführt werden!${NC}"
-   echo -e "${YELLOW}Führe aus: sudo $0${NC}"
-   exit 1
+if [ "$EUID" -ne 0 ]; then
+  echo "Bitte als root starten!"
+  exit 1
 fi
 
-# Ursprünglicher Benutzer (nicht root)
-REAL_USER=${SUDO_USER:-$USER}
-REAL_HOME=$(eval echo ~$REAL_USER)
+install_docker_portainer() {
+  echo "=== Entferne alte Docker-Versionen ==="
+  apt remove -y docker docker-engine docker.io containerd runc
 
-echo -e "${GREEN}✅ Starte Installation als: ${REAL_USER}${NC}\n"
+  echo "=== Abhängigkeiten installieren ==="
+  apt update
+  apt install -y ca-certificates curl gnupg lsb-release
 
-# Funktion: Benutzer-Eingabe mit Timeout
-ask_with_default() {
-    local prompt="$1"
-    local default="$2"
-    local answer
+  echo "=== Docker GPG Key hinzufügen ==="
+  install -m 0755 -d /etc/apt/keyrings
+  curl -fsSL https://download.docker.com/linux/$(. /etc/os-release; echo "$ID")/gpg \
+    | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+  chmod a+r /etc/apt/keyrings/docker.gpg
 
-    echo -e -n "${YELLOW}${prompt} [${default}]: ${NC}"
+  echo "=== Docker Repository einrichten ==="
+  echo \
+    "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+    https://download.docker.com/linux/$(. /etc/os-release; echo "$ID") \
+    $(lsb_release -cs) stable" \
+    > /etc/apt/sources.list.d/docker.list
 
-    # Timeout nach 10 Sekunden
-    if read -t 10 answer; then
-        answer=$(echo "$answer" | tr '[:upper:]' '[:lower:]')
+  apt update
 
-        # Validierung
-        while [[ ! "$answer" =~ ^[jny]$ ]] && [[ -n "$answer" ]]; do
-            echo -e "${RED}Ungültige Eingabe! Bitte j/n/y eingeben.${NC}"
-            echo -e -n "${YELLOW}${prompt} [${default}]: ${NC}"
-            read -t 10 answer || true
-            answer=$(echo "$answer" | tr '[:upper:]' '[:lower:]')
-        done
+  echo "=== Docker Engine 24 + Compose v2 installieren ==="
+  apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
-        # Leere Eingabe = Standard
-        [[ -z "$answer" ]] && answer="$default"
-    else
-        echo -e "\n${CYAN}⏱️  Timeout - verwende Standard: ${default}${NC}"
-        answer="$default"
-    fi
+  echo "=== Docker aktivieren ==="
+  systemctl enable docker
+  systemctl start docker
 
-    [[ "$answer" == "j" ]] || [[ "$answer" == "y" ]]
+  echo "=== Benutzer zur docker-Gruppe hinzufügen ==="
+  usermod -aG docker ${SUDO_USER:-$USER}
+
+  echo "=== Volume für Portainer anlegen ==="
+  docker volume create portainer_data >/dev/null
+
+  echo "=== Starte Portainer CE LTS ==="
+  docker stop portainer >/dev/null 2>&1
+  docker rm portainer >/dev/null 2>&1
+
+  docker run -d \
+    -p 8000:8000 \
+    -p 9443:9443 \
+    --name portainer \
+    --restart=always \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    -v portainer_data:/data \
+    portainer/portainer-ce:lts
+
+  echo "=============================================="
+  echo "INSTALLATION FERTIG!"
+  echo "Portainer erreichbar unter:"
+  echo "  https://<DEINE-IP>:9443"
+  echo "=============================================="
 }
 
-# Abfragen
-echo -e "${BLUE}═══ Installationsoptionen ═══${NC}\n"
+update_docker_portainer() {
+  echo "=== Docker aktualisieren ==="
+  apt update
+  apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
-if ask_with_default "Docker installieren?" "j"; then
-    INSTALL_DOCKER=true
-else
-    INSTALL_DOCKER=false
-fi
+  echo "=== Docker neu starten ==="
+  systemctl restart docker
 
-if ask_with_default "Docker Compose installieren?" "j"; then
-    INSTALL_COMPOSE=true
-else
-    INSTALL_COMPOSE=false
-fi
+  echo "=== Portainer aktualisieren ==="
+  docker pull portainer/portainer-ce:lts
 
-if ask_with_default "Portainer CE installieren?" "j"; then
-    INSTALL_PORTAINER=true
-else
-    INSTALL_PORTAINER=false
-fi
+  docker stop portainer >/dev/null 2>&1
+  docker rm portainer >/dev/null 2>&1
 
-echo ""
+  docker run -d \
+    -p 8000:8000 \
+    -p 9443:9443 \
+    --name portainer \
+    --restart=always \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    -v portainer_data:/data \
+    portainer/portainer-ce:lts
 
-# Nichts ausgewählt
-if ! $INSTALL_DOCKER && ! $INSTALL_COMPOSE && ! $INSTALL_PORTAINER; then
-    echo -e "${RED}❌ Keine Komponente ausgewählt. Installation abgebrochen.${NC}"
-    exit 0
-fi
-
-# Kleine Hilfsfunktion: auf Docker warten
-wait_for_docker() {
-    echo -e "${YELLOW}→ Warte auf Docker-Daemon...${NC}"
-    for i in {1..30}; do
-        if docker info >/dev/null 2>&1; then
-            echo -e "${GREEN}✅ Docker-Daemon läuft.${NC}"
-            return 0
-        fi
-        sleep 1
-    done
-    echo -e "${RED}❌ Docker-Daemon konnte nicht gestartet werden!${NC}"
-    systemctl status docker --no-pager
-    return 1
+  echo "=============================================="
+  echo "UPDATE FERTIG!"
+  echo "Docker & Portainer wurden aktualisiert."
+  echo "=============================================="
 }
 
-# ===========================================
-# DOCKER INSTALLATION
-# ===========================================
-if $INSTALL_DOCKER; then
-    echo -e "\n${CYAN}╔════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║        Docker Installation             ║${NC}"
-    echo -e "${CYAN}╚════════════════════════════════════════╝${NC}\n"
+uninstall_docker_portainer() {
+  echo "=== Portainer stoppen ==="
+  docker stop portainer 2>/dev/null
+  docker rm portainer 2>/dev/null
 
-    # System Update
-    echo -e "${YELLOW}→ Aktualisiere Paketquellen...${NC}"
-    apt-get update -qq
+  read -p "Portainer-Daten löschen? (j/n): " del
+  if [[ "$del" == "j" || "$del" == "J" ]]; then
+    docker volume rm portainer_data 2>/dev/null
+  fi
 
-    echo -e "${YELLOW}→ Optional: Systemupgrade (empfohlen)...${NC}"
-    if ask_with_default "Jetzt 'apt-get upgrade -y' ausführen?" "j"; then
-        apt-get upgrade -y -qq
-    fi
+  echo "=== Docker Pakete entfernen ==="
+  apt remove -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin docker.io docker-engine runc
 
-    # Alte Docker-Versionen entfernen
-    echo -e "${YELLOW}→ Entferne alte Docker-Versionen...${NC}"
-    apt-get remove -y docker docker-engine docker.io containerd runc 2>/dev/null || true
+  echo "=== Datenverzeichnisse löschen ==="
+  rm -rf /var/lib/docker
+  rm -rf /var/lib/containerd
 
-    # Dependencies
-    echo -e "${YELLOW}→ Installiere Abhängigkeiten...${NC}"
-    apt-get install -y -qq \
-        ca-certificates \
-        curl \
-        gnupg \
-        lsb-release
+  echo "=== Docker Repository entfernen ==="
+  rm -f /etc/apt/sources.list.d/docker.list
+  rm -f /etc/apt/keyrings/docker.gpg
+  apt update
 
-    # Docker GPG Key
-    echo -e "${YELLOW}→ Füge Docker GPG Key hinzu...${NC}"
-    install -m 0755 -d /etc/apt/keyrings
-    if [ ! -f /etc/apt/keyrings/docker.gpg ]; then
-        curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
-            | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-        chmod a+r /etc/apt/keyrings/docker.gpg
-    fi
+  echo "=============================================="
+  echo "Docker & Portainer wurden vollständig entfernt."
+  echo "=============================================="
+}
 
-    # Docker Repository
-    if [ ! -f /etc/apt/sources.list.d/docker.list ]; then
-        echo -e "${YELLOW}→ Füge Docker Repository hinzu...${NC}"
-        echo \
-          "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-          $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
-    fi
+# ========================
+# Hauptmenü
+# ========================
+while true; do
+  clear
+  echo "======================"
+  echo "  DOCKER MANAGER"
+  echo "======================"
+  echo "1) Installieren"
+  echo "2) Updaten"
+  echo "3) Deinstallieren"
+  echo "4) Beenden"
+  echo ""
+  read -p "Auswahl: " choice
 
-    # Docker installieren
-    echo -e "${YELLOW}→ Installiere Docker Engine + Plugins...${NC}"
-    apt-get update -qq
-    apt-get install -y -qq \
-        docker-ce \
-        docker-ce-cli \
-        containerd.io \
-        docker-buildx-plugin \
-        docker-compose-plugin
+  case $choice in
+    1) install_docker_portainer ;;
+    2) update_docker_portainer ;;
+    3) uninstall_docker_portainer ;;
+    4) echo "Tschüss!"; exit 0 ;;
+    *) echo "Ungültige Eingabe!" ;;
+  esac
 
-    # Docker-Gruppe + Benutzer
-    echo -e "${YELLOW}→ Richte Docker-Gruppe ein...${NC}"
-    groupadd -f docker
-    usermod -aG docker "$REAL_USER"
-
-    # Docker starten
-    systemctl enable docker >/dev/null 2>&1
-    systemctl restart docker
-
-    if ! wait_for_docker; then
-        echo -e "${RED}❌ Docker konnte nicht korrekt gestartet werden. Abbruch.${NC}"
-        exit 1
-    fi
-
-    DOCKER_VERSION=$(docker --version)
-    echo -e "${GREEN}✅ Docker installiert: ${DOCKER_VERSION}${NC}"
-fi
-
-# ===========================================
-# DOCKER COMPOSE INSTALLATION
-# ===========================================
-if $INSTALL_COMPOSE; then
-    echo -e "\n${CYAN}╔════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║      Docker Compose Installation       ║${NC}"
-    echo -e "${CYAN}╚════════════════════════════════════════╝${NC}\n"
-
-    # Falls Docker noch nicht installiert wurde, Plugin über apt installieren
-    echo -e "${YELLOW}→ Stelle sicher, dass Docker Compose Plugin installiert ist...${NC}"
-    apt-get install -y -qq docker-compose-plugin || true
-
-    # Pfad des Plugins ermitteln
-    COMPOSE_PLUGIN_PATH=""
-    for p in \
-        /usr/libexec/docker/cli-plugins/docker-compose \
-        /usr/lib/docker/cli-plugins/docker-compose \
-        /usr/local/lib/docker/cli-plugins/docker-compose
-    do
-        if [ -x "$p" ]; then
-            COMPOSE_PLUGIN_PATH="$p"
-            break
-        fi
-    done
-
-    if [ -z "$COMPOSE_PLUGIN_PATH" ]; then
-        echo -e "${RED}❌ Konnte docker-compose Plugin nicht finden!${NC}"
-        echo -e "${YELLOW}Bitte prüfe manuell: 'docker compose version'${NC}"
-    else
-        echo -e "${YELLOW}→ Erstelle Symlink für 'docker-compose' Befehl...${NC}"
-        ln -sf "$COMPOSE_PLUGIN_PATH" /usr/local/bin/docker-compose
-    fi
-
-    # Version prüfen
-    if docker compose version >/dev/null 2>&1; then
-        COMPOSE_VERSION=$(docker compose version | awk '{print $4}')
-        echo -e "${GREEN}✅ Docker Compose installiert: ${COMPOSE_VERSION}${NC}"
-    else
-        echo -e "${RED}⚠️  'docker compose' konnte nicht ausgeführt werden.${NC}"
-    fi
-fi
-
-# ===========================================
-# PORTAINER INSTALLATION
-# ===========================================
-if $INSTALL_PORTAINER; then
-    echo -e "\n${CYAN}╔════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║       Portainer CE Installation        ║${NC}"
-    echo -e "${CYAN}╚════════════════════════════════════════╝${NC}\n"
-
-    # Sicherstellen, dass Docker läuft
-    if ! systemctl is-active --quiet docker; then
-        echo -e "${YELLOW}→ Docker läuft nicht, starte Service...${NC}"
-        systemctl restart docker
-    fi
-
-    if ! wait_for_docker; then
-        echo -e "${RED}❌ Ohne laufenden Docker-Daemon kann Portainer nicht installiert werden.${NC}"
-        exit 1
-    fi
-
-    # Alte Portainer-Installation entfernen
-    echo -e "${YELLOW}→ Entferne alte Portainer-Installation (falls vorhanden)...${NC}"
-    docker stop portainer 2>/dev/null || true
-    docker rm portainer 2>/dev/null || true
-    docker volume rm portainer_data 2>/dev/null || true
-
-    # Volume erstellen
-    echo -e "${YELLOW}→ Erstelle Portainer Volume...${NC}"
-    docker volume create portainer_data >/dev/null
-
-    # Image vorab ziehen (schnellere & zuverlässigere Starts)
-    echo -e "${YELLOW}→ Lade Portainer Image (lts)...${NC}"
-    docker pull portainer/portainer-ce:lts
-
-    # Portainer starten
-    echo -e "${YELLOW}→ Starte Portainer Container...${NC}"
-    docker run -d \
-      -p 8000:8000 \
-      -p 9443:9443 \
-      --name portainer \
-      --restart=always \
-      -v /var/run/docker.sock:/var/run/docker.sock \
-      -v portainer_data:/data \
-      portainer/portainer-ce:lts >/dev/null
-
-    # Warten bis Portainer gestartet ist
-    echo -e "${YELLOW}⏳ Warte auf Portainer Start...${NC}"
-    sleep 15
-
-    # Status prüfen
-    if docker ps --filter "name=portainer" --filter "status=running" --format '{{.Names}}' | grep -q "^portainer$"; then
-        SERVER_IP=$(hostname -I | awk '{print $1}')
-        echo -e "${GREEN}✅ Portainer erfolgreich gestartet!${NC}"
-        echo -e "${CYAN}🌐 Zugriff: https://${SERVER_IP}:9443${NC}"
-        echo -e "${YELLOW}Wenn in der GUI 'local environment unreachable' steht:${NC}"
-        echo -e "   → Unter 'Environments' prüfen, dass 'local' auf 'Docker socket' (unix:///var/run/docker.sock) gestellt ist."
-    else
-        echo -e "${RED}❌ Portainer konnte nicht gestartet werden!${NC}"
-        echo -e "${YELLOW}Logs (letzte 20 Zeilen):${NC}"
-        docker logs portainer 2>&1 | tail -20 || true
-    fi
-fi
-
-# ===========================================
-# ZUSAMMENFASSUNG
-# ===========================================
-echo -e "\n${CYAN}╔════════════════════════════════════════╗${NC}"
-echo -e "${CYAN}║          Installation Abgeschlossen    ║${NC}"
-echo -e "${CYAN}╚════════════════════════════════════════╝${NC}\n"
-
-SERVER_IP=$(hostname -I | awk '{print $1}')
-
-echo -e "${GREEN}✅ Installierte Komponenten:${NC}"
-$INSTALL_DOCKER && echo -e "   • Docker Engine: $(docker --version | awk '{print $3}' | tr -d ',')"
-$INSTALL_COMPOSE && docker compose version >/dev/null 2>&1 && \
-    echo -e "   • Docker Compose: $(docker compose version | awk '{print $4}')"
-$INSTALL_PORTAINER && echo -e "   • Portainer CE: https://${SERVER_IP}:9443"
-
-echo -e "\n${YELLOW}⚠️  WICHTIG:${NC}"
-echo -e "   1. ${CYAN}Melde dich neu an${NC} oder führe aus: ${BLUE}newgrp docker${NC}"
-echo -e "   2. Dann teste: ${BLUE}docker ps${NC}"
-if $INSTALL_PORTAINER; then
-    echo -e "   3. Portainer Setup im Browser: ${BLUE}https://${SERVER_IP}:9443${NC}"
-    echo -e "      → Beim ersten Login Admin-Account erstellen."
-fi
-
-echo -e "\n${GREEN}🎉 Installation abgeschlossen!${NC}\n"
-
-# Hinweis für aktuellen Benutzer
-if [[ "$REAL_USER" != "root" ]]; then
-    echo -e "${CYAN}💡 Tipp: Führe jetzt aus als ${REAL_USER}:${NC}"
-    echo -e "   ${BLUE}su - ${REAL_USER}${NC}"
-    echo -e "   ${BLUE}docker ps${NC}\n"
-fi
+  echo ""
+  read -p "Weiter mit ENTER..."
+done
