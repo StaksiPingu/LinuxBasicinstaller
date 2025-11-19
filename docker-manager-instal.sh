@@ -1,5 +1,5 @@
 #!/bin/bash
-# docker-portainer-installer.sh
+# docker-portainer-installer.sh - Ubuntu 24.04 Noble Version
 
 set -e
 
@@ -15,12 +15,23 @@ log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 log_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
-echo -e "${BLUE}=== Docker 28.5.1 + Docker Compose V2 + Portainer Installer ===${NC}"
+echo -e "${BLUE}=== Docker + Docker Compose V2 + Portainer Installer für Ubuntu 24.04 ===${NC}"
+
+# System-Info anzeigen
+UBUNTU_VERSION=$(lsb_release -cs)
+UBUNTU_RELEASE=$(lsb_release -ds)
+echo "💻 System: $UBUNTU_RELEASE"
 
 # Prüfe Root-Rechte
 if [ "$EUID" -ne 0 ]; then
     log_error "Bitte als root oder mit sudo ausführen"
     exit 1
+fi
+
+# Prüfe Ubuntu Version
+if [ "$UBUNTU_VERSION" != "noble" ]; then
+    log_warning "Dieses Script ist für Ubuntu 24.04 (Noble) optimiert"
+    log_warning "Aktuelle Version: $UBUNTU_VERSION"
 fi
 
 # Alte Versionen entfernen
@@ -43,24 +54,25 @@ log_info "Füge Docker GPG Key hinzu..."
 mkdir -p /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
 
-# Repository hinzufügen
-log_info "Füge Docker Repository hinzu..."
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-    $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+# Repository für NOBLE hinzufügen
+log_info "Füge Docker Repository für Ubuntu Noble hinzu..."
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu noble stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
 
-# Docker 28.5.1 installieren
-log_info "Installiere Docker 28.5.1..."
+# Aktuelle Docker Version installieren (für Noble)
+log_info "Installiere Docker (aktuelle Version für Noble)..."
 apt-get update
+
+# Verfügbare Versionen prüfen
+log_info "Verfügbare Docker-Versionen:"
+apt-cache policy docker-ce | head -10
+
+# Stabile Version installieren (ohne feste Versionsnummer)
 apt-get install -y \
-    docker-ce=5:28.5.1-1~ubuntu.22.04~jammy \
-    docker-ce-cli=5:28.5.1-1~ubuntu.22.04~jammy \
+    docker-ce \
+    docker-ce-cli \
     containerd.io \
     docker-buildx-plugin \
     docker-compose-plugin
-
-# Version festhalten (verhindert unerwünschte Updates)
-log_info "Halte Docker-Version fest..."
-apt-mark hold docker-ce docker-ce-cli
 
 # Docker Service starten
 log_info "Starte Docker Service..."
@@ -81,6 +93,13 @@ fi
 log_info "Installiere Portainer 2.33.2..."
 docker pull portainer/portainer-ce:2.33.2
 
+# Prüfen ob Portainer bereits läuft
+if docker ps -a | grep -q portainer; then
+    log_info "Stoppe vorhandenen Portainer Container..."
+    docker stop portainer 2>/dev/null || true
+    docker rm portainer 2>/dev/null || true
+fi
+
 # Portainer Container erstellen
 log_info "Starte Portainer Container..."
 docker run -d \
@@ -94,24 +113,28 @@ docker run -d \
     portainer/portainer-ce:2.33.2
 
 # Warten bis Portainer läuft
-sleep 5
+log_info "Warte auf Portainer Start..."
+sleep 10
 
 # Installation abschließen
 log_success "=== Installation abgeschlossen! ==="
 echo ""
 echo "📊 Zugriff auf Portainer:"
-echo "   - HTTP:  http://$(hostname -I | awk '{print $1}'):9000"
-echo "   - HTTPS: https://$(hostname -I | awk '{print $1}'):9443"
+IP_ADDRESS=$(hostname -I | awk '{print $1}')
+echo "   - HTTP:  http://$IP_ADDRESS:9000"
+echo "   - HTTPS: https://$IP_ADDRESS:9443 (empfohlen)"
 echo ""
-echo "🔧 Versions-Info:"
+echo "🔧 Installierte Versionen:"
 docker --version
 docker-compose --version
 echo "Portainer: 2.33.2"
 echo ""
 echo "📋 Nächste Schritte:"
-echo "1. Browser öffnen: https://$(hostname -I | awk '{print $1}'):9443"
+echo "1. Browser öffnen: https://$IP_ADDRESS:9443"
 echo "2. Admin-Passwort setzen"
 echo "3. Lokale Umgebung auswählen"
+echo ""
+echo "⚠️  Wichtig: Nach Reboot neu einloggen oder 'newgrp docker' ausführen"
 
-# Script ausführbar machen: chmod +x docker-portainer-installer.sh
-# Ausführen: sudo ./docker-portainer-installer.sh
+# Erfolgreich beenden
+exit 0
