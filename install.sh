@@ -1,9 +1,9 @@
 #!/bin/bash
 
-SCRIPT_URL="https://raw.githubusercontent.com/StaksiPingu/LinuxBasicinstaller/refs/heads/main/freshdocker-install.sh"
-SCRIPT_NAME="docker-manager-instal.sh"
+SCRIPT_URL="https://raw.githubusercontent.com/StaksiPingu/LinuxBasicinstaller/main/freshdocker-install.sh"
+SCRIPT_NAME="freshdocker-install.sh"
 
-echo "🔽 Downloading installer..."
+echo "🔽 Downloading Docker Manager installer..."
 
 # Download
 if command -v curl &> /dev/null; then
@@ -15,12 +15,7 @@ else
     exit 1
 fi
 
-# Ausführbar machen
 chmod +x "$SCRIPT_NAME"
 
-# Ausführen
-echo "🚀 Starting installer..."
+echo "🚀 Starting Docker Manager..."
 ./"$SCRIPT_NAME"
-
-# Cleanup optional
-# rm -f "$SCRIPT_NAME"
