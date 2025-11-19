@@ -1,6 +1,6 @@
 #!/bin/bash
 
-SCRIPT_URL="https://raw.githubusercontent.com/StaksiPingu/LinuxBasicinstaller/main/docker-manager-instal.sh"
+SCRIPT_URL="https://raw.githubusercontent.com/StaksiPingu/LinuxBasicinstaller/refs/heads/main/freshdocker-install.sh"
 SCRIPT_NAME="docker-manager-instal.sh"
 
 echo "🔽 Downloading installer..."
