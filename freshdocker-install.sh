@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# ⭐ FIX für curl | bash - MUSS ganz am Anfang stehen!
+exec < /dev/tty
+
 # Farben für bessere Lesbarkeit
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -8,12 +11,37 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Banner
+clear
 echo -e "${BLUE}"
 echo "╔══════════════════════════════════════════════════════════╗"
 echo "║     Docker & Portainer Installation Script              ║"
 echo "║     für Ubuntu 24.04 LTS                                 ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
+
+# Prüfen ob als Root ausgeführt wird
+if [ "$EUID" -eq 0 ]; then 
+    echo -e "${RED}[ERROR] Bitte führen Sie dieses Script NICHT als root aus!${NC}"
+    echo -e "${YELLOW}[INFO] Führen Sie es als normaler Benutzer aus. Sudo wird bei Bedarf automatisch verwendet.${NC}"
+    exit 1
+fi
+
+# Countdown am Start
+echo -e "${YELLOW}[INFO] Dieses Script wird installieren:${NC}"
+echo "  → Docker Engine (neueste Version)"
+echo "  → Docker Compose V2"
+echo "  → Portainer Agent (optional)"
+echo ""
+echo -e "${RED}[WARNUNG] Drücke STRG+C zum Abbrechen!${NC}"
+echo ""
+
+for i in 5 4 3 2 1; do
+    echo -ne "\r  ⏱️  Script startet in $i Sekunden... "
+    sleep 1
+done
+echo -e "\n"
+echo -e "${GREEN}▶ Los geht's!${NC}\n"
+sleep 0.5
 
 # Funktion: Docker installieren
 install_docker() {
@@ -215,13 +243,6 @@ main_menu() {
         esac
     done
 }
-
-# Prüfen ob als Root ausgeführt wird
-if [ "$EUID" -eq 0 ]; then 
-    echo -e "${RED}[ERROR] Bitte führen Sie dieses Script NICHT als root aus!${NC}"
-    echo -e "${YELLOW}[INFO] Führen Sie es als normaler Benutzer aus. Sudo wird bei Bedarf automatisch verwendet.${NC}"
-    exit 1
-fi
 
 # Script starten
 main_menu
