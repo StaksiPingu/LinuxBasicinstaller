@@ -1,8 +1,5 @@
 #!/bin/bash
 
-# ⭐ FIX für curl | bash - MUSS ganz am Anfang stehen!
-exec < /dev/tty
-
 # Farben für bessere Lesbarkeit
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -19,66 +16,47 @@ echo "║     für Ubuntu 24.04 LTS                                 ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 
-# Prüfen ob als Root ausgeführt wird
-if [ "$EUID" -eq 0 ]; then 
-    echo -e "${RED}[ERROR] Bitte führen Sie dieses Script NICHT als root aus!${NC}"
-    echo -e "${YELLOW}[INFO] Führen Sie es als normaler Benutzer aus. Sudo wird bei Bedarf automatisch verwendet.${NC}"
-    exit 1
-fi
-
-# Countdown am Start
-echo -e "${YELLOW}[INFO] Dieses Script wird installieren:${NC}"
-echo "  → Docker Engine (neueste Version)"
-echo "  → Docker Compose V2"
-echo "  → Portainer Agent (optional)"
-echo ""
-echo -e "${RED}[WARNUNG] Drücke STRG+C zum Abbrechen!${NC}"
-echo ""
-
-for i in 5 4 3 2 1; do
-    echo -ne "\r  ⏱️  Script startet in $i Sekunden... "
-    sleep 1
-done
-echo -e "\n"
-echo -e "${GREEN}▶ Los geht's!${NC}\n"
-sleep 0.5
+# ❌ DIESE ZEILEN ENTFERNEN:
+# # Prüfen ob als Root ausgeführt wird
+# if [ "$EUID" -eq 0 ]; then 
+#     echo -e "${RED}[ERROR] Bitte führen Sie dieses Script NICHT als root aus!${NC}"
+#     echo -e "${YELLOW}[INFO] Führen Sie es als normaler Benutzer aus. Sudo wird bei Bedarf automatisch verwendet.${NC}"
+#     exit 1
+# fi
 
 # Funktion: Docker installieren
 install_docker() {
     echo -e "${GREEN}[INFO] Installiere Docker...${NC}"
     
     # Alte Versionen entfernen
-    sudo apt-get remove -y docker docker-engine docker.io containerd runc 2>/dev/null
+    apt-get remove -y docker docker-engine docker.io containerd runc 2>/dev/null
     
     # Abhängigkeiten installieren
-    sudo apt-get update
-    sudo apt-get install -y \
+    apt-get update
+    apt-get install -y \
         ca-certificates \
         curl \
         gnupg \
         lsb-release
     
     # Docker GPG Key hinzufügen
-    sudo install -m 0755 -d /etc/apt/keyrings
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-    sudo chmod a+r /etc/apt/keyrings/docker.gpg
+    install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    chmod a+r /etc/apt/keyrings/docker.gpg
     
     # Docker Repository hinzufügen
     echo \
       "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
       $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
-      sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+      tee /etc/apt/sources.list.d/docker.list > /dev/null
     
     # Docker installieren
-    sudo apt-get update
-    sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin
+    apt-get update
+    apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin
     
     # Docker Dienst starten
-    sudo systemctl start docker
-    sudo systemctl enable docker
-    
-    # Aktuellen Benutzer zur Docker-Gruppe hinzufügen
-    sudo usermod -aG docker $USER
+    systemctl start docker
+    systemctl enable docker
     
     echo -e "${GREEN}[SUCCESS] Docker erfolgreich installiert!${NC}"
     docker --version
@@ -88,8 +66,8 @@ install_docker() {
 install_docker_compose() {
     echo -e "${GREEN}[INFO] Installiere Docker Compose V2...${NC}"
     
-    sudo apt-get update
-    sudo apt-get install -y docker-compose-plugin
+    apt-get update
+    apt-get install -y docker-compose-plugin
     
     echo -e "${GREEN}[SUCCESS] Docker Compose V2 erfolgreich installiert!${NC}"
     docker compose version
@@ -100,13 +78,13 @@ install_portainer_agent() {
     echo -e "${GREEN}[INFO] Installiere Portainer Agent...${NC}"
     
     # Prüfen ob Docker läuft
-    if ! sudo systemctl is-active --quiet docker; then
+    if ! systemctl is-active --quiet docker; then
         echo -e "${RED}[ERROR] Docker ist nicht aktiv. Bitte zuerst Docker installieren!${NC}"
         return 1
     fi
     
     # Portainer Agent Container starten
-    sudo docker run -d \
+    docker run -d \
       -p 9001:9001 \
       --name portainer_agent \
       --restart=always \
@@ -123,20 +101,20 @@ update_all() {
     echo -e "${GREEN}[INFO] Update aller Komponenten...${NC}"
     
     # System Update
-    sudo apt-get update
-    sudo apt-get upgrade -y
+    apt-get update
+    apt-get upgrade -y
     
     # Docker Update
     if command -v docker &> /dev/null; then
         echo -e "${GREEN}[INFO] Update Docker...${NC}"
-        sudo apt-get install -y --only-upgrade docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+        apt-get install -y --only-upgrade docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
     fi
     
     # Portainer Agent Update
-    if sudo docker ps -a | grep -q portainer_agent; then
+    if docker ps -a | grep -q portainer_agent; then
         echo -e "${GREEN}[INFO] Update Portainer Agent...${NC}"
-        sudo docker stop portainer_agent
-        sudo docker rm portainer_agent
+        docker stop portainer_agent
+        docker rm portainer_agent
         install_portainer_agent
     fi
     
@@ -154,20 +132,20 @@ uninstall_all() {
     fi
     
     # Portainer Agent entfernen
-    if sudo docker ps -a | grep -q portainer_agent; then
+    if docker ps -a | grep -q portainer_agent; then
         echo -e "${GREEN}[INFO] Entferne Portainer Agent...${NC}"
-        sudo docker stop portainer_agent
-        sudo docker rm portainer_agent
-        sudo docker rmi portainer/agent:latest
+        docker stop portainer_agent
+        docker rm portainer_agent
+        docker rmi portainer/agent:latest
     fi
     
     # Docker entfernen
     echo -e "${GREEN}[INFO] Entferne Docker...${NC}"
-    sudo apt-get purge -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-    sudo rm -rf /var/lib/docker
-    sudo rm -rf /var/lib/containerd
-    sudo rm /etc/apt/sources.list.d/docker.list
-    sudo rm /etc/apt/keyrings/docker.gpg
+    apt-get purge -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    rm -rf /var/lib/docker
+    rm -rf /var/lib/containerd
+    rm /etc/apt/sources.list.d/docker.list
+    rm /etc/apt/keyrings/docker.gpg
     
     echo -e "${GREEN}[SUCCESS] Alle Komponenten wurden entfernt!${NC}"
 }
@@ -207,8 +185,6 @@ installation_menu() {
     
     echo ""
     echo -e "${GREEN}[INFO] Installation abgeschlossen!${NC}"
-    echo -e "${YELLOW}[WICHTIG] Bitte melden Sie sich ab und wieder an, damit die Docker-Gruppenänderungen wirksam werden.${NC}"
-    echo -e "${YELLOW}          Oder führen Sie aus: newgrp docker${NC}"
 }
 
 # Hauptmenü
